@@ -1,0 +1,12 @@
+# # Files
+.python-version
+
+# Filetypes
+*.sw*
+
+# Folder Contents
+config/*
+
+# Folders
+*/__pycache__/
+*.egg-info/

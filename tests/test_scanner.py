@@ -6,7 +6,7 @@ from obd_influx.scanner import Scanner, OBD_MAX_FREQUENCY
 from obd_influx.storage import _RECORDERS, AbstractRecorder
 
 
-STORAGE_VAR: str = ""
+STORAGE_VAR = ""  # type: str
 
 class UnittestRecorder(AbstractRecorder):
     """Recorder used to unittest Scanner without InfluxDB."""

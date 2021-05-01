@@ -1,8 +1,10 @@
+# -*- coding: future_fstrings -*-
 # Standard modules
 import json
 import logging
 import pathlib
 import threading
+import time
 from typing import Any, Dict, List, Optional, Union
 
 # External modules
@@ -15,6 +17,7 @@ from obd_influx import converter
 logger = logging.getLogger(__name__)
 
 OBD_MAX_FREQUENCY = 100.0  # Hz
+OBD_DEFAULT_FREQUENCY = 10.0  # Hz
 
 
 class Scanner:
@@ -23,12 +26,13 @@ class Scanner:
     is determined by recorder_config['name'].
     """
     def __init__(
-            self,
-            portstr: str,
-            baudrate: float,
-            commands: List[obd.OBDCommand],
-            recorder_config: Union[pathlib.Path, Dict[str, Any]],
-            frequency: Optional[float] = None):
+        self,
+        portstr: str,
+        baudrate: float,
+        commands: List[obd.OBDCommand],
+        recorder_config: Union[pathlib.Path, Dict[str, Any]],
+        frequency: Optional[float] = None
+    ):
         """Set up OBD connection to vehicle.
 
         Args:
@@ -58,7 +62,7 @@ class Scanner:
 
         # Set up attributes to support scanning thread
         self._e_shutdown = threading.Event()  # event used to stop scan thread
-        self._scan_thread = None
+        self._scan_thread = None  # type: Optional[threading.Thread]
 
         self.connect()
 
@@ -75,8 +79,13 @@ class Scanner:
             except AttributeError:
                 raise ValueError("obd.OBDCommand.{cmd} is not valid.")
 
-        cls.init(
-            obd_config['portstr'], obd_config['baudrate'], frequency, commands)
+        return cls(
+            portstr=obd_config['portstr'],
+            baudrate=obd_config['baudrate'],
+            commands=commands,
+            recorder_config=obd_config['recorder'],
+            frequency=frequency
+        )
 
     # Public API
 
@@ -111,7 +120,8 @@ class Scanner:
             logger.error("Scanner not started")
             return
         self._e_shutdown.set()
-        self._scan_thread.join()
+        if self._scan_thread is not None:
+            self._scan_thread.join()
 
     def shutdown(self) -> None:
         """Ensures all connections close gracefully."""
@@ -129,10 +139,10 @@ class Scanner:
         return 1.0 / self._loop_time
 
     @frequency.setter
-    def frequency(self, value: float) -> None:
+    def frequency(self, value: Optional[float]) -> None:
         """Setter for scanner query frequency."""
         if value is None:
-            value = 10.0
+            value = OBD_DEFAULT_FREQUENCY
         elif value <= 0.0:
             raise ValueError(f"desired frequency {value} <= 0.0")
         self._loop_time = 1.0 / value
@@ -145,7 +155,7 @@ class Scanner:
     @property
     def is_scanning(self) -> bool:
         """Check if scanner is actively recording from vehicle."""
-        return self._thread is not None and self._thread.is_alive()
+        return self._scan_thread is not None and self._scan_thread.is_alive()
 
     # Private methods
 

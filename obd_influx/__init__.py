@@ -1,3 +1,4 @@
+# -*- coding: future_fstrings -*-
 # Standard modules
 import logging
 

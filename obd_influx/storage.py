@@ -1,14 +1,14 @@
+# -*- coding: future_fstrings -*-
 # Standard modules
 import abc
 import json
 import pathlib
 import time
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union, Type
 
 # External modules
-import influxdb_client
+import influxdb
 import obd
-from influxdb_client.client.write_api import SYNCHRONOUS
 
 Command = Union[obd.OBDCommand, obd.OBDResponse, str]  # Command type
 
@@ -28,7 +28,7 @@ class AbstractRecorder(abc.ABC):
         pass
 
 
-_RECORDERS: Dict[str, AbstractRecorder] = {}
+_RECORDERS = {}  # type: Dict[str, Type[AbstractRecorder]]
 
 
 class InfluxDBRecorder:
@@ -41,13 +41,12 @@ class InfluxDBRecorder:
         self.bucket = bucket
         self.org = org
 
-        self._client = influxdb_client.InfluxDBClient(
+        self._client = influxdb.InfluxDBClient(
             url=self.url,
             org=self.org,
             token=self.token,
         )
-        self._write_api = self._client.write_api(
-            write_options=SYNCHRONOUS)
+        self._write_api = self._client.write_api()
 
     def record(self, data: str) -> None:
         """Wrapper for influx_write_api.write()."""
@@ -81,31 +80,32 @@ def create_recorder(
     Returns:
         instantiated Recorder instance
     """
-    if not name and not config_json:
-        raise TypeError("Must provided either 'name' or 'config_json'")
-
     # Read config.json file if provided
     if config_json:
         with config_json.open('r') as io_wrapper:
-            config_dict = json.loads(io_wrapper)
+            config_dict = json.load(io_wrapper)
     else:
+        if name is None:
+            raise TypeError("Must provided either 'name' or 'config_json'")
         config_dict = {}
 
     # Load name from file_config if not provided
-    if not name:
+    if name is not None:
+        recorder_key = name
+    else:
         try:
-            name = config_dict.pop('name')
+            recorder_key = config_dict.pop('name')
         except KeyError as err:
             raise KeyError(
                     "'config_json' file does not specify 'name'.") from err
-    config_dict.update(kwargs)  # kwargs overwrite configuration file
 
-    if name not in _RECORDERS.keys():
+    config_dict.update(kwargs)  # kwargs overwrite configuration file
+    if recorder_key not in _RECORDERS.keys():
         raise KeyError(
             f"No recorder registered with {name}. "
             + f"Available recorders are {','.join(_RECORDERS.keys())}.")
 
-    return _RECORDERS[name](**config_dict)
+    return _RECORDERS[recorder_key](**config_dict)
 
 
 class InfluxPacketBuilder:
@@ -242,14 +242,14 @@ def obd_2_influx_float(response: obd.OBDResponse) -> str:
     """Convert OBDResponse with float value to InfluxDB packet."""
     builder = InfluxPacketBuilder(measurement=response.command.name)
     builder.add_timestamp(response.time)
-    builder.add_field('value', response.value.magnitude)
+    builder.add_fields('value', response.value.magnitude)
     return builder.to_json()
 
 def obd_2_influx_percent(response: obd.OBDResponse) -> str:
     """Convert OBDResponse with percent value."""
     builder = InfluxPacketBuilder(measurement=response.command.name)
     builder.add_timestamp(response.time)
-    builder.add_field('percent', response.value.magnitude)
+    builder.add_fields('percent', response.value.magnitude)
     return builder.to_json()
 
 def obd_2_influx_status(response: obd.OBDResponse) -> str:
@@ -264,7 +264,7 @@ class InfluxDBConverterFactory:
     """Class interface for serializing OBDResponses.""" 
 
     def __init__(self):
-        self._converters: Dict[str, Callable] = {}
+        self._converters = {}  # type: Dict[str, Callable]
 
     def register(self, command: FactoryKey, converter: Callable) -> None:
         """Register new converter for command.
@@ -307,7 +307,7 @@ class InfluxDBConverterFactory:
         Returns:
             output from converter registered to provided response
         """
-        converter = self.get_converter(command)
+        converter = self.get_converter(response)
         return converter(response, *args, **kwargs)
 
     @staticmethod

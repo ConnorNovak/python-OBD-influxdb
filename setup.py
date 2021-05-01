@@ -17,10 +17,11 @@ setuptools.setup(
         "Operating System :: Ubuntu",
     ],
     install_requires=[
-        'influxdb-client',
+        'future-fstrings',
+        'influxdb',
         'numpy',
         'obd',
         'plac',
     ],
-    python_requires='>=3.6',
+    python_requires='>=3.5',
 )

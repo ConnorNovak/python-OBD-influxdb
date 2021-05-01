@@ -18,6 +18,11 @@ class AbstractRecorder(abc.ABC):
     Subclasses should implement """
 
     @abc.abstractclassmethod
+    def init_from_json(self, config_json: pathlib.Path):
+        """Initialize recorder from config.json file."""
+        pass
+
+    @abc.abstractclassmethod
     def record(self, data: Any) -> None:
         """Record provided data."""
         pass
@@ -34,32 +39,53 @@ _RECORDERS = {}  # type: Dict[str, Type[AbstractRecorder]]
 class InfluxDBRecorder:
     """Standard data recording interface wrapper for InfluxDB."""
 
-    def __init__(self, url: str, token: str, bucket: str, org: str):
+    def __init__(
+        self, host: str, port: int, database: str,
+        username: str, password: str
+    ):
         """Load configuration into InfluxDBClient."""
-        self.url = url
-        self.token = token
-        self.bucket = bucket
-        self.org = org
 
         self._client = influxdb.InfluxDBClient(
-            url=self.url,
-            org=self.org,
-            token=self.token,
+            host=host,
+            port=port,
+            username=username,
+            password=password,
         )
-        self._write_api = self._client.write_api()
+        self._client.switch_database(database)
+
+    @classmethod
+    def init_from_json(cls, config_json: pathlib.Path):
+        """Initialize InfluxDBRecorder from config.json file."""
+        with config_json.open('r') as io_wrapper:
+            config = json.load(io_wrapper)
+
+        if 'influx' not in config:
+            raise ValueError(
+                f"config.json has no top-level tag 'influx'")
+
+        missing_keys = [
+            key for key in ['host', 'port', 'database', 'username', 'password']
+            if key not in config['influx']]
+        if len(missing_keys) > 0:
+            raise ValueError(
+                f"config.json 'influx' entry missing keys {missing_keys}")
+        return cls(**config['influx'])
 
     def record(self, data: str) -> None:
         """Wrapper for influx_write_api.write()."""
-        self._write_api.write(
-            bucket=self.bucket,
-            org=self.org,
-            record=data,
-            time_precision='ms')
+        self._client.write_points(data)
 
     def close(self) -> None:
         """Wrapper for influx_write_api.close()."""
-        self._write_api.close()
         self._client.close()
+
+    def check_settings(self) -> None:
+        """Run various tests on InfluxDB."""
+        self._client.ping()  # Check that InfluxDB is connected
+        print("InfluxDB server pinged successfully")
+
+        # Check that provided database exists
+
 
 
 _RECORDERS['influxdb'] = InfluxDBRecorder
@@ -80,32 +106,31 @@ def create_recorder(
     Returns:
         instantiated Recorder instance
     """
-    # Read config.json file if provided
-    if config_json:
-        with config_json.open('r') as io_wrapper:
-            config_dict = json.load(io_wrapper)
+    if name is None:
+        # Read name from config.json file
+        if config_json is not None:
+            with config_json.open('r') as io_wrapper:
+                config_dict = json.load(io_wrapper)
+                try:
+                    recorder_key = config_dict.pop('name')
+                except KeyError as err:
+                    raise KeyError(
+                        "'config_json' file does not specify 'name'.") from err
+        else:
+            raise TypeError(
+                "Must provided either 'name' or 'config_json'")
     else:
-        if name is None:
-            raise TypeError("Must provided either 'name' or 'config_json'")
-        config_dict = {}
-
-    # Load name from file_config if not provided
-    if name is not None:
         recorder_key = name
-    else:
-        try:
-            recorder_key = config_dict.pop('name')
-        except KeyError as err:
-            raise KeyError(
-                    "'config_json' file does not specify 'name'.") from err
 
-    config_dict.update(kwargs)  # kwargs overwrite configuration file
     if recorder_key not in _RECORDERS.keys():
         raise KeyError(
-            f"No recorder registered with {name}. "
+            f"No recorder registered with {recorder_key}. "
             + f"Available recorders are {','.join(_RECORDERS.keys())}.")
 
-    return _RECORDERS[recorder_key](**config_dict)
+    recorder = _RECORDERS[recorder_key]
+    if config_json is None:
+        return recorder(**config_dict)
+    return recorder.init_from_json(config_json)
 
 
 class InfluxPacketBuilder:

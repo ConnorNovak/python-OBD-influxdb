@@ -1,7 +1,7 @@
 import time
 import unittest
 
-from obd_influx.storage import InfluxPacketBuilder
+from obd_influx.storage import InfluxPacketBuilder, InfluxDBRecorder
 
 
 class TestInfluxPacketBuilder(unittest.TestCase):

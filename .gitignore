@@ -10,3 +10,4 @@ config/*
 # Folders
 */__pycache__/
 *.egg-info/
+venv/

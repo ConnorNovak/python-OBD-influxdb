@@ -16,13 +16,14 @@ from obd_influx.storage import create_recorder
 )
 def check_config_json(config_json: pathlib.Path):
     """Verify that config.json file correctly defines Recorder."""
-    type_ = 'influxdb'
-    recorder = create_recorder(type_, config_json)
+    recorder = create_recorder(config_json=config_json)
     print(
-        f"{config_json.resolve()} successfully initialized {type_} recorder")
-    recorder.check_settings()
-    print(f"{type_} recorder settings check out")
-    print(f"{type_} recorder has no check_settings method")
+        f"{config_json.resolve()} successfully initialized recorder")
+    try:
+        recorder.check_settings()
+        print("recorder settings check out")
+    except ImportError:
+        print("recorder has no check_settings method")
 
 
 if __name__ == '__main__':

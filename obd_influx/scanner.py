@@ -44,7 +44,7 @@ class Scanner:
                 if not provided, queries as fast as possible
         """
         if isinstance(recorder_config, pathlib.PurePath):
-            self._recorder = create_recorder(config=recorder_config)
+            self._recorder = create_recorder(config_json=recorder_config)
         else:
             self._recorder = create_recorder(**recorder_config)
 
@@ -75,15 +75,15 @@ class Scanner:
         commands = []
         for cmd in obd_config['commands']:
             try:
-                commands.append(getattr(obd.OBDCommand, cmd))
+                commands.append(getattr(obd.commands, cmd))
             except AttributeError:
-                raise ValueError("obd.OBDCommand.{cmd} is not valid.")
+                raise ValueError(f"obd.OBDCommand.{cmd} is not valid.")
 
         return cls(
             portstr=obd_config['portstr'],
             baudrate=obd_config['baudrate'],
             commands=commands,
-            recorder_config=obd_config['recorder'],
+            recorder_config=config_file,
             frequency=frequency
         )
 
@@ -180,9 +180,18 @@ class Scanner:
         """Mainloop; request & log data from OBD device until stop() called."""
         logger.info("Scanner started")
         cmd_ndx = 0
+        ctrl_c_count = 0
         while not self._e_shutdown.is_set():
-            time.sleep(self.frequency)
-            self._record_data(self._get_response(self._commands[cmd_ndx]))
-            cmd_ndx = (cmd_ndx) + 1 % len(self._commands)
+            try:
+                time.sleep(self.frequency)
+                response = self._get_response(self._commands[cmd_ndx])
+                if response is None:
+                    logger.warning(
+                        f"Command {self._commands[cmd_ndx]} returned None")
+                else:
+                    self._record_data(response)
+                cmd_ndx = (cmd_ndx) + 1 % len(self._commands)
+            except KeyboardInterrupt:
+                break
 
         logger.info("Scanner stopped.")

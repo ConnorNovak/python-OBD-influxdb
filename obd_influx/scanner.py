@@ -183,7 +183,7 @@ class Scanner:
         ctrl_c_count = 0
         while not self._e_shutdown.is_set():
             try:
-                time.sleep(self.frequency)
+                time.sleep(self._loop_time)
                 response = self._get_response(self._commands[cmd_ndx])
                 if response is None:
                     logger.warning(

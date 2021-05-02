@@ -52,7 +52,6 @@ class InfluxDBRecorder:
     def record(self, data: str) -> None:
         """Wrapper for influx_write_api.write()."""
         data = json.loads(data)
-        print(data)
         self._client.write_points([data], protocol='json')
 
     def close(self) -> None:
